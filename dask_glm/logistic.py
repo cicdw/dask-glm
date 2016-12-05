@@ -1,18 +1,64 @@
 from __future__ import absolute_import, division, print_function
 
+from multipledispatch import dispatch
 import numpy as np
 import dask.array as da
 
+def sigmoid(x):
+    '''Sigmoid function of x.'''
+    return 1/(1+da.exp(-x))
+
+@dispatch(np.ndarray,np.ndarray)
+def dot(A,B):
+    return np.dot(A,B)
+
+@dispatch(da.Array,da.Array)
+def dot(A,B):
+    return da.dot(A,B)
+
 class Logistic(object):
 
-    def initialize(self, value=None):
-        raise NotImplementedError
+    def initialize(self, size, value=None, method=None):
+        if value:
+            self.init = value
+        else:
+            self.init = np.zeros(size)
 
+        return self.init
+
+    def _check_convergence(self, old, new, tol=1e-4, method=None):
+        
+        coef_change = np.absolute(old - new)
+        return not np.any(coef_change>tol)
+        
     def fit(self, method=None, **kwargs):
         raise NotImplementedError
 
-    def __init__(self):
-        self.value = 0
+    def __init__(self, max_iter=50):
+        self.max_iter = 50
+
+    def _newton_step(self,curr,X,y):
+        p = (X.dot(curr)).map_blocks(sigmoid)
+        hessian = dot(p*(1-p)*X.T, X)
+        grad = X.T.dot(y-p)
+        step, *_ = da.linalg.lstsq(hessian, grad)
+        beta = curr + step
+        
+        return beta
+
+    def newton(self,X,y):
+        beta = self.initialize(X.shape[1])
+        iter_count = 0
+        converged = False
+
+        while not converged:
+            beta_old = beta
+            beta = self._newton_step(beta,X,y)
+            iter_count += 1
+            
+            converged = (self._check_convergence(old, new) & (iter_count<self.max_iter))
+
+        return beta
 
     def gradient(X, y, max_steps=100):
         N, M = X.shape
