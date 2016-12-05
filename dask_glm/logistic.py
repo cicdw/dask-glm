@@ -18,13 +18,19 @@ def dot(A,B):
 
 class Logistic(object):
 
+    def hessian(self):
+        return NotImplementedError
+
+    def gradient(self):
+        return NotImplementedError
+
     def initialize(self, size, value=None, method=None):
         if value:
-            self.init = value
+            initial = value
         else:
-            self.init = np.zeros(size)
+            initial = np.zeros(size)
 
-        return self.init
+        return initial
 
     def _check_convergence(self, old, new, tol=1e-4, method=None):
         
@@ -34,8 +40,9 @@ class Logistic(object):
     def fit(self, method=None, **kwargs):
         raise NotImplementedError
 
-    def __init__(self, max_iter=50):
+    def __init__(self, max_iter=50, init='zeros'):
         self.max_iter = 50
+        self.init = init
 
     def _newton_step(self,curr,X,y):
         p = (X.dot(curr)).map_blocks(sigmoid)
@@ -56,12 +63,11 @@ class Logistic(object):
             beta = self._newton_step(beta,X,y)
             iter_count += 1
             
-            converged = (self._check_convergence(old, new) & (iter_count<self.max_iter))
+            converged = (self._check_convergence(beta_old, beta) & (iter_count<self.max_iter))
 
         return beta
 
-    def gradient(X, y, max_steps=100):
-        N, M = X.shape
+    def gradient(X, y, max_steps=100, verbose=True):
         firstBacktrackMult = 0.1
         nextBacktrackMult = 0.5
         armijoMult = 0.1
@@ -69,10 +75,12 @@ class Logistic(object):
         stepSize = 1.0
         recalcRate = 10
         backtrackMult = firstBacktrackMult
-        beta = np.zeros(M)
+        beta = self.initialize(X.shape[1])
 
-        print('##       -f        |df/f|    |dx/x|    step')
-        print('----------------------------------------------')
+        if verbose:
+            print('##       -f        |df/f|    |dx/x|    step')
+            print('----------------------------------------------')
+
         for k in range(max_steps):
             # Compute the gradient
             if k % recalcRate == 0:
@@ -107,11 +115,13 @@ class Logistic(object):
                         break
                 stepSize *= backtrackMult
             if stepSize == 0:
-                print('No more progress')
+                if verbose:
+                    print('No more progress')
                 break
             df /= max(func, lf)
             db = stepSize * steplen / (np.linalg.norm(beta) + stepSize * steplen)
-            print('%2d  %.6e %9.2e  %.2e  %.1e' % (k + 1, func, df, db, stepSize))
+            if verbose:
+                print('%2d  %.6e %9.2e  %.2e  %.1e' % (k + 1, func, df, db, stepSize))
             if df < 1e-14:
                 print('Converged')
                 break
