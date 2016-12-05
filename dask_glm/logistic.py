@@ -16,7 +16,7 @@ def dot(A,B):
 def dot(A,B):
     return da.dot(A,B)
 
-class Logistic(object):
+class Optimizer(object):
 
     def initialize(self, size, value=None, method=None):
         if value:
@@ -30,38 +30,32 @@ class Logistic(object):
         coef_change = np.absolute(old - new)
         return not np.any(coef_change>tol)
 
-    def gradient(self, y, p):
-        return self.X.T.dot(y-p)
-
-    def hessian(self, p):
-        return dot(p*(1-p)*self.X.T, self.X)
-    
-    def fit(self, method=None, **kwargs):
+    def fit(self, X, y, method=None, **kwargs):
         raise NotImplementedError
 
-    def __init__(self, max_iter=50, init='zeros'):
+    def __init__(self, max_iter=50):
         self.max_iter = 50
-        self.init = init
 
-    def _newton_step(self,curr,X,y):
-        p = (X.dot(curr)).map_blocks(sigmoid)
-        hessian = dot(p*(1-p)*X.T, X)
-        grad = X.T.dot(y-p)
+    def _newton_step(self,curr):
+
+        hessian = self.hessian(curr)
+        grad = self.gradient(curr)
+
         step, *_ = da.linalg.lstsq(hessian, grad)
         beta = curr + step
         
         return beta.compute()
 
-    def newton(self,X,y):
+    def newton(self):
     
-        beta = self.initialize(X.shape[1])
+        beta = self.init
 
         iter_count = 0
         converged = False
 
         while not converged:
             beta_old = beta
-            beta = self._newton_step(beta,X,y)
+            beta = self._newton_step(beta)
             iter_count += 1
             
             converged = (self._check_convergence(beta_old, beta) & (iter_count<self.max_iter))
@@ -130,3 +124,21 @@ class Logistic(object):
             backtrackMult = nextBacktrackMult
 
         return beta
+
+class LogisticModel(Optimizer):
+
+    def gradient(self, beta):
+        p = (self.X.dot(beta)).map_blocks(sigmoid)
+        return self.X.T.dot(self.y-p)
+
+    def hessian(self, beta):
+        p = (self.X.dot(beta)).map_blocks(sigmoid)
+        return dot(p*(1-p)*self.X.T, self.X)
+
+    def func(self,beta):
+        raise NotImplementedError
+
+    def __init__(self, X, y, **kwargs):
+        super(LogisticModel, self).__init__(**kwargs)
+        self.X, self.y = X, y
+        self.init = self.initialize(X.shape[1])
