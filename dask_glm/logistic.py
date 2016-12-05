@@ -18,12 +18,6 @@ def dot(A,B):
 
 class Logistic(object):
 
-    def hessian(self):
-        return NotImplementedError
-
-    def gradient(self):
-        return NotImplementedError
-
     def initialize(self, size, value=None, method=None):
         if value:
             initial = value
@@ -33,10 +27,15 @@ class Logistic(object):
         return initial
 
     def _check_convergence(self, old, new, tol=1e-4, method=None):
-        
         coef_change = np.absolute(old - new)
         return not np.any(coef_change>tol)
-        
+
+    def gradient(self, y, p):
+        return self.X.T.dot(y-p)
+
+    def hessian(self, p):
+        return dot(p*(1-p)*self.X.T, self.X)
+    
     def fit(self, method=None, **kwargs):
         raise NotImplementedError
 
@@ -51,10 +50,12 @@ class Logistic(object):
         step, *_ = da.linalg.lstsq(hessian, grad)
         beta = curr + step
         
-        return beta
+        return beta.compute()
 
     def newton(self,X,y):
+    
         beta = self.initialize(X.shape[1])
+
         iter_count = 0
         converged = False
 
@@ -67,7 +68,7 @@ class Logistic(object):
 
         return beta
 
-    def gradient(X, y, max_steps=100, verbose=True):
+    def gradient_descent(X, y, max_steps=100, verbose=True):
         firstBacktrackMult = 0.1
         nextBacktrackMult = 0.5
         armijoMult = 0.1
