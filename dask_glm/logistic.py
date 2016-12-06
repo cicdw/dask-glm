@@ -26,6 +26,21 @@ class Optimizer(object):
 
         return initial
 
+    def hessian(self,x):
+        raise NotImplementedError
+
+    def gradient(self,x):
+        raise NotImplementedError
+
+    def func(self,x):
+        raise NotImplementedError
+
+    def _bfgs_step(self,curr):
+        raise NotImplementedError
+
+    def bfgs(self, curr):
+        raise NotImplementedError
+
     def _check_convergence(self, old, new, tol=1e-4, method=None):
         coef_change = np.absolute(old - new)
         return not np.any(coef_change>tol)
@@ -62,68 +77,81 @@ class Optimizer(object):
 
         return beta
 
-    def gradient_descent(X, y, max_steps=100, verbose=True):
-        firstBacktrackMult = 0.1
-        nextBacktrackMult = 0.5
-        armijoMult = 0.1
-        stepGrowth = 1.25
-        stepSize = 1.0
+    def gradient_descent(self, X, y, max_steps=100, verbose=True):
         recalcRate = 10
-        backtrackMult = firstBacktrackMult
-        beta = self.initialize(X.shape[1])
+        stepSize = 1.0
+        stepGrowth = 1.25
+        beta = self.init
 
         if verbose:
-            print('##       -f        |df/f|    |dx/x|    step')
+            print('##       -f        |df/f|    step')
             print('----------------------------------------------')
 
         for k in range(max_steps):
-            # Compute the gradient
-            if k % recalcRate == 0:
-                Xbeta = X.dot(beta)
-                eXbeta = da.exp(Xbeta)
-                func = da.log1p(eXbeta).sum() - y.dot(Xbeta)
-            e1 = eXbeta + 1.0
-            gradient = X.T.dot(eXbeta / e1 - y)
+
+            Xbeta = X.dot(beta)
+            func = self.func(Xbeta)
+            gradient = -self.gradient(beta)
             steplen = (gradient**2).sum()**0.5
             Xgradient = X.dot(gradient)
 
-            Xbeta, eXbeta, func, gradient, steplen, Xgradient = da.compute(
-                    Xbeta, eXbeta, func, gradient, steplen, Xgradient)
-
-            obeta = beta
-            oXbeta = Xbeta
+            Xbeta, func, gradient, steplen, Xgradient = da.compute(
+                    Xbeta, func, gradient, steplen, Xgradient)
 
             # Compute the step size
-            lf = func
-            for ii in range(100):
-                beta = obeta - stepSize * gradient
-                if ii and np.array_equal(beta, obeta):
-                    stepSize = 0
-                    break
-                Xbeta = oXbeta - stepSize * Xgradient
-                # This prevents overflow
-                if np.all(Xbeta < 700):
-                    eXbeta = np.exp(Xbeta)
-                    func = np.sum(np.log1p(eXbeta)) - np.dot(y, Xbeta)
-                    df = lf - func
-                    if df >= armijoMult * stepSize * steplen ** 2:
-                        break
-                stepSize *= backtrackMult
+            if k:
+                stepSize, beta, fnew = self._backtrack(func,
+                    beta, Xbeta, gradient, Xgradient,
+                    stepSize, steplen, **{'backtrackMult' : 0.5})
+            else:
+                stepSize, beta, fnew = self._backtrack(func,
+                    beta, Xbeta, gradient, Xgradient,
+                    stepSize, steplen, **{'backtrackMult' : 0.1})
+
+            stepSize *= stepGrowth
+            df = func-fnew
+
             if stepSize == 0:
                 if verbose:
                     print('No more progress')
-                break
-            df /= max(func, lf)
-            db = stepSize * steplen / (np.linalg.norm(beta) + stepSize * steplen)
+
+            df /= max(func, fnew)
             if verbose:
-                print('%2d  %.6e %9.2e  %.2e  %.1e' % (k + 1, func, df, db, stepSize))
+                print('%2d  %.6e %9.2e  %.1e' % (k + 1, func, df, stepSize))
             if df < 1e-14:
                 print('Converged')
                 break
-            stepSize *= stepGrowth
-            backtrackMult = nextBacktrackMult
 
         return beta
+
+    ## this is currently specific to linear models
+    def _backtrack(self, curr_val, curr, Xcurr, 
+        step, Xstep, stepSize, steplen, **kwargs):
+
+        ## theres got to be a better way...
+        params = {'backtrackMult' : 0.5,
+            'armijoMult' : 0.1}
+
+        params.update(kwargs)
+        backtrackMult = params['backtrackMult']
+        armijoMult = params['armijoMult']
+
+        for ii in range(100):
+            beta = curr - stepSize*step
+
+            if ii and np.array_equal(curr, beta):
+                stepSize = 0
+                break
+
+            Xbeta = Xcurr - stepSize*Xstep
+
+            func = self.func(Xbeta)
+            df = curr_val - func
+            if df >= armijoMult * stepSize * steplen ** 2:
+                break
+            stepSize *= backtrackMult
+
+        return stepSize, beta, func
 
 class LogisticModel(Optimizer):
 
@@ -135,8 +163,14 @@ class LogisticModel(Optimizer):
         p = (self.X.dot(beta)).map_blocks(sigmoid)
         return dot(p*(1-p)*self.X.T, self.X)
 
-    def func(self,beta):
-        raise NotImplementedError
+    def func(self,Xbeta):
+        eXbeta = np.exp(Xbeta)
+        return np.sum(np.log1p(eXbeta)) - np.dot(self.y, Xbeta)
+
+    def loglike(self,beta):
+        Xbeta = self.X.dot(beta)
+        eXbeta = da.exp(Xbeta)
+        return da.log1p(eXbeta).sum() - self.y.dot(Xbeta)
 
     def __init__(self, X, y, **kwargs):
         super(LogisticModel, self).__init__(**kwargs)
