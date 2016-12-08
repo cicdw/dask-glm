@@ -35,11 +35,68 @@ class Optimizer(object):
     def func(self,x):
         raise NotImplementedError
 
-    def _bfgs_step(self,curr):
-        raise NotImplementedError
+    def bfgs(self, verbose=True, max_steps=100):
+        recalcRate = 10
+        stepSize = 1.0
+        stepGrowth = 1.25
+        beta = self.init
+        M = beta.shape[0]
+        Hk = np.eye(M)
 
-    def bfgs(self, curr):
-        raise NotImplementedError
+        if verbose:
+            print('##       -f        |df/f|    step')
+            print('----------------------------------------------')
+
+        for k in range(max_steps):
+
+            if k % recalcRate==0:
+                Xbeta = self.X.dot(beta)
+                func = self.func(Xbeta)
+
+            gradient = self.gradient(Xbeta)
+
+            if k:
+                yk += gradient
+                rhok = 1/yk.dot(sk)
+                adj = np.eye(M) - rhok*sk.dot(yk.T)
+                Hk = adj.dot(Hk.dot(adj.T)) + rhok*sk.dot(sk.T)
+
+            step = Hk.dot(gradient)
+            steplen = (step**2).sum()**0.5
+            Xstep = self.X.dot(step)
+
+            Xbeta, func, steplen, step, Xstep = da.compute(
+                    Xbeta, func, steplen, step, Xstep)
+
+            # Compute the step size
+            if k==0:
+                stepSize, beta, Xbeta, fnew = self._backtrack(func,
+                    beta, Xbeta, step, Xstep,
+                    stepSize, steplen, **{'backtrackMult' : 0.1,
+                        'armijoMult' : 1e-4})
+            else:
+                stepSize, beta, Xbeta, fnew = self._backtrack(func,
+                    beta, Xbeta, step, Xstep,
+                    stepSize, steplen, **{'armijoMult' : 1e-4})
+
+            yk = -gradient
+            sk = -stepSize*step
+            stepSize = 1.0
+            df = func-fnew
+            func = fnew
+
+            if stepSize == 0:
+                if verbose:
+                    print('No more progress')
+
+            df /= max(func, fnew)
+            if verbose:
+                print('%2d  %.6e %9.2e  %.1e' % (k + 1, func, df, stepSize))
+            if df < 1e-14:
+                print('Converged')
+                break
+
+        return beta
 
     def _check_convergence(self, old, new, tol=1e-4, method=None):
         coef_change = np.absolute(old - new)
@@ -159,6 +216,18 @@ class Optimizer(object):
 
         return stepSize, beta, Xbeta, func
 
+class Model(Optimizer):
+    '''Class for holding all output statistics.'''
+
+    def pvalues(self):
+        raise NotImplementedError
+
+    def summary(self):
+        raise NotImplementedError
+
+    def __init__(self):
+        return None
+
 class LogisticModel(Optimizer):
 
     def gradient(self,Xbeta):
@@ -175,10 +244,13 @@ class LogisticModel(Optimizer):
         eXbeta = np.exp(Xbeta)
         return np.sum(np.log1p(eXbeta)) - np.dot(self.y, Xbeta)
 
-    def loglike(self,beta):
+    def negloglike(self,beta):
         Xbeta = self.X.dot(beta)
         eXbeta = da.exp(Xbeta)
         return da.log1p(eXbeta).sum() - self.y.dot(Xbeta)
+
+    def fit(self,method='newton',**kwargs):
+        raise NotImplementedError    
 
     def __init__(self, X, y, **kwargs):
         super(LogisticModel, self).__init__(**kwargs)
