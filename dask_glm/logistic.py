@@ -58,7 +58,7 @@ class Optimizer(object):
 
         # should this be dask or numpy?
         step, *_ = da.linalg.lstsq(hessian, grad)
-        beta = curr + step
+        beta = curr - step
         
         return beta.compute()
 
@@ -96,7 +96,7 @@ class Optimizer(object):
                 Xbeta = self.X.dot(beta)
                 func = self.func(Xbeta)
 
-            gradient = -self.gradient(Xbeta)
+            gradient = self.gradient(Xbeta)
             steplen = (gradient**2).sum()**0.5
             Xgradient = self.X.dot(gradient)
 
@@ -164,7 +164,7 @@ class LogisticModel(Optimizer):
     def gradient(self,Xbeta):
         p = sigmoid(Xbeta)
 #        p = (self.X.dot(beta)).map_blocks(sigmoid)
-        return self.X.T.dot(self.y-p)
+        return self.X.T.dot(p-self.y)
 
     def hessian(self,Xbeta):
         p = sigmoid(Xbeta)
@@ -188,7 +188,10 @@ class LogisticModel(Optimizer):
 class NormalModel(Optimizer):
 
     def gradient(self,Xbeta):
-        return -self.X.T.dot(Xbeta) + self.X.T.dot(self.y)
+        return self.X.T.dot(Xbeta) - self.X.T.dot(self.y)
+
+    def hessian(self,Xbeta):
+        return self.X.T.dot(self.X)
 
     def func(self,Xbeta):
         return ((self.y - Xbeta)**2).sum()
@@ -197,4 +200,3 @@ class NormalModel(Optimizer):
         super(NormalModel, self).__init__(**kwargs)
         self.X, self.y = X, y
         self.init = self.initialize(X.shape[1])
-
