@@ -51,11 +51,12 @@ class Optimizer(object):
     def __init__(self, max_iter=50):
         self.max_iter = 50
 
-    def _newton_step(self,curr):
+    def _newton_step(self,curr,Xcurr):
 
-        hessian = self.hessian(curr)
-        grad = self.gradient(curr)
+        hessian = self.hessian(Xcurr)
+        grad = self.gradient(Xcurr)
 
+        # should this be dask or numpy?
         step, *_ = da.linalg.lstsq(hessian, grad)
         beta = curr + step
         
@@ -64,20 +65,22 @@ class Optimizer(object):
     def newton(self):
     
         beta = self.init
+        Xbeta = self.X.dot(beta)
 
         iter_count = 0
         converged = False
 
         while not converged:
             beta_old = beta
-            beta = self._newton_step(beta)
+            beta = self._newton_step(beta,Xbeta)
+            Xbeta = self.X.dot(beta)
             iter_count += 1
             
             converged = (self._check_convergence(beta_old, beta) & (iter_count<self.max_iter))
 
         return beta
 
-    def gradient_descent(self, X, y, max_steps=100, verbose=True):
+    def gradient_descent(self, max_steps=100, verbose=True):
         recalcRate = 10
         stepSize = 1.0
         stepGrowth = 1.25
@@ -89,27 +92,30 @@ class Optimizer(object):
 
         for k in range(max_steps):
 
-            Xbeta = X.dot(beta)
-            func = self.func(Xbeta)
-            gradient = -self.gradient(beta)
+            if k % recalcRate==0:
+                Xbeta = self.X.dot(beta)
+                func = self.func(Xbeta)
+
+            gradient = -self.gradient(Xbeta)
             steplen = (gradient**2).sum()**0.5
-            Xgradient = X.dot(gradient)
+            Xgradient = self.X.dot(gradient)
 
             Xbeta, func, gradient, steplen, Xgradient = da.compute(
                     Xbeta, func, gradient, steplen, Xgradient)
 
             # Compute the step size
-            if k:
-                stepSize, beta, fnew = self._backtrack(func,
-                    beta, Xbeta, gradient, Xgradient,
-                    stepSize, steplen, **{'backtrackMult' : 0.5})
-            else:
-                stepSize, beta, fnew = self._backtrack(func,
+            if k==0:
+                stepSize, beta, Xbeta, fnew = self._backtrack(func,
                     beta, Xbeta, gradient, Xgradient,
                     stepSize, steplen, **{'backtrackMult' : 0.1})
+            else:
+                stepSize, beta, Xbeta, fnew = self._backtrack(func,
+                    beta, Xbeta, gradient, Xgradient,
+                    stepSize, steplen)
 
             stepSize *= stepGrowth
             df = func-fnew
+            func = fnew
 
             if stepSize == 0:
                 if verbose:
@@ -135,6 +141,7 @@ class Optimizer(object):
         params.update(kwargs)
         backtrackMult = params['backtrackMult']
         armijoMult = params['armijoMult']
+        Xbeta = Xcurr
 
         for ii in range(100):
             beta = curr - stepSize*step
@@ -142,7 +149,6 @@ class Optimizer(object):
             if ii and np.array_equal(curr, beta):
                 stepSize = 0
                 break
-
             Xbeta = Xcurr - stepSize*Xstep
 
             func = self.func(Xbeta)
@@ -151,16 +157,18 @@ class Optimizer(object):
                 break
             stepSize *= backtrackMult
 
-        return stepSize, beta, func
+        return stepSize, beta, Xbeta, func
 
 class LogisticModel(Optimizer):
 
-    def gradient(self, beta):
-        p = (self.X.dot(beta)).map_blocks(sigmoid)
+    def gradient(self,Xbeta):
+        p = sigmoid(Xbeta)
+#        p = (self.X.dot(beta)).map_blocks(sigmoid)
         return self.X.T.dot(self.y-p)
 
-    def hessian(self, beta):
-        p = (self.X.dot(beta)).map_blocks(sigmoid)
+    def hessian(self,Xbeta):
+        p = sigmoid(Xbeta)
+#        p = (self.X.dot(beta)).map_blocks(sigmoid)
         return dot(p*(1-p)*self.X.T, self.X)
 
     def func(self,Xbeta):
@@ -176,3 +184,17 @@ class LogisticModel(Optimizer):
         super(LogisticModel, self).__init__(**kwargs)
         self.X, self.y = X, y
         self.init = self.initialize(X.shape[1])
+
+class NormalModel(Optimizer):
+
+    def gradient(self,Xbeta):
+        return -self.X.T.dot(Xbeta) + self.X.T.dot(self.y)
+
+    def func(self,Xbeta):
+        return ((self.y - Xbeta)**2).sum()
+
+    def __init__(self, X, y, **kwargs):
+        super(NormalModel, self).__init__(**kwargs)
+        self.X, self.y = X, y
+        self.init = self.initialize(X.shape[1])
+
