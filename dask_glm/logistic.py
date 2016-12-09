@@ -1,8 +1,9 @@
 from __future__ import absolute_import, division, print_function
 
+import dask.array as da
 from multipledispatch import dispatch
 import numpy as np
-import dask.array as da
+from scipy.stats import chi2
 
 def sigmoid(x):
     '''Sigmoid function of x.'''
@@ -19,6 +20,8 @@ def dot(A,B):
 class Optimizer(object):
 
     def initialize(self, size, value=None, method=None):
+        '''Method for setting the initialization.'''
+
         if value:
             initial = value
         else:
@@ -26,13 +29,13 @@ class Optimizer(object):
 
         return initial
 
-    def hessian(self,x):
+    def hessian(self):
         raise NotImplementedError
 
-    def gradient(self,x):
+    def gradient(self):
         raise NotImplementedError
 
-    def func(self,x):
+    def func(self):
         raise NotImplementedError
 
     def bfgs(self, verbose=True, max_steps=100):
@@ -62,7 +65,7 @@ class Optimizer(object):
                 Hk = adj.dot(Hk.dot(adj.T)) + rhok*sk.dot(sk.T)
 
             step = Hk.dot(gradient)
-            steplen = (step**2).sum()**0.5
+            steplen = step.dot(gradient)
             Xstep = self.X.dot(step)
 
             Xbeta, func, steplen, step, Xstep = da.compute(
@@ -104,9 +107,6 @@ class Optimizer(object):
 
     def fit(self, X, y, method=None, **kwargs):
         raise NotImplementedError
-
-    def __init__(self, max_iter=50):
-        self.max_iter = 50
 
     def _newton_step(self,curr,Xcurr):
 
@@ -216,11 +216,20 @@ class Optimizer(object):
 
         return stepSize, beta, Xbeta, func
 
+    def __init__(self, max_iter=50, init_type='zeros'):
+        self.max_iter = 50
+
 class Model(Optimizer):
     '''Class for holding all output statistics.'''
 
-    def pvalues(self):
-        raise NotImplementedError
+    def fit(self,method='newton',**kwargs):
+        self.coefs = self.newton(self.X, self.y)
+
+    def pvalues(self, names={}):
+        H = self.hessian(self.X.dot(self.coefs))
+        covar = np.linalg.inv(H.compute())
+        variance = np.diag(covar)
+        self.chi = self.coefs**2 / variance
 
     def summary(self):
         raise NotImplementedError
@@ -248,9 +257,6 @@ class LogisticModel(Optimizer):
         Xbeta = self.X.dot(beta)
         eXbeta = da.exp(Xbeta)
         return da.log1p(eXbeta).sum() - self.y.dot(Xbeta)
-
-    def fit(self,method='newton',**kwargs):
-        raise NotImplementedError    
 
     def __init__(self, X, y, **kwargs):
         super(LogisticModel, self).__init__(**kwargs)
