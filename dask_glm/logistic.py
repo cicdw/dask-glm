@@ -154,7 +154,7 @@ class Optimizer(object):
                 func = self.func(Xbeta)
 
             gradient = self.gradient(Xbeta)
-            steplen = (gradient**2).sum()**0.5
+            steplen = (gradient**2).sum()
             Xgradient = self.X.dot(gradient)
 
             Xbeta, func, gradient, steplen, Xgradient = da.compute(
@@ -210,7 +210,7 @@ class Optimizer(object):
 
             func = self.func(Xbeta)
             df = curr_val - func
-            if df >= armijoMult * stepSize * steplen ** 2:
+            if df >= armijoMult * stepSize * steplen:
                 break
             stepSize *= backtrackMult
 
