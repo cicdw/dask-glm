@@ -267,7 +267,7 @@ class Model(Optimizer):
             M = self.X.shape[1]
         elif isinstance(X, dd.Series):
             self.names = [X.name]
-            self.X = X.values
+            self.X = X.values[:, None]
             M = 1
         else:
             self.X = X
