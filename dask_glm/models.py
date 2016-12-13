@@ -26,6 +26,8 @@ class Optimizer(object):
 
         if value:
             self.init = value
+        elif method=='random':
+            self.init = np.random.normal(0,1,size)
         else:
             self.init = np.zeros(size)
 
@@ -244,10 +246,16 @@ class Model(Optimizer):
         self.pvals = chi2_cdf(self.chi)
 
     def summary(self):
-        out = pd.DataFrame({'Coefficient' : self.coefs,
-            'Std. Error' : self.se,
-            'Chi-square' : self.chi,
-            'p-value' : self.pvals})
+        if hasattr(self, 'names'):
+            out = pd.DataFrame({'Coefficient' : self.coefs,
+                'Std. Error' : self.se,
+                'Chi-square' : self.chi,
+                'p-value' : self.pvals}, index=self.names)
+        else:
+            out = pd.DataFrame({'Coefficient' : self.coefs,
+                'Std. Error' : self.se,
+                'Chi-square' : self.chi,
+                'p-value' : self.pvals})
         return out
 
     def __init__(self, X, y, **kwargs):
