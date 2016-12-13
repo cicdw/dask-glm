@@ -1,5 +1,5 @@
 from __future__ import division, print_function
-from dask_glm.models import Optimizer
+from dask_glm.base import Optimizer
 import numpy as np
 import unittest
 
