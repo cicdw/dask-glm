@@ -1,8 +1,10 @@
 from __future__ import absolute_import, division, print_function
 
 import dask.array as da
+import dask.dataframe as dd
 from multipledispatch import dispatch
 import numpy as np
+import pandas as pd
 from scipy.stats import chi2
 
 def sigmoid(x):
@@ -23,11 +25,11 @@ class Optimizer(object):
         '''Method for setting the initialization.'''
 
         if value:
-            initial = value
+            self.init = value
         else:
-            initial = np.zeros(size)
+            self.init = np.zeros(size)
 
-        return initial
+        return self
 
     def hessian(self):
         raise NotImplementedError
@@ -223,21 +225,58 @@ class Model(Optimizer):
     '''Class for holding all output statistics.'''
 
     def fit(self,method='newton',**kwargs):
-        self.coefs = self.newton(self.X, self.y)
+        methods = {'newton' : self.newton, 
+            'gradient_descent' : self.gradient_descent,
+            'BFGS' : self.bfgs}
 
-    def pvalues(self, names={}):
+        self.coefs = methods[method]()
+        self._pvalues()
+
+        return self
+
+    def _pvalues(self, names={}):
         H = self.hessian(self.X.dot(self.coefs))
         covar = np.linalg.inv(H.compute())
         variance = np.diag(covar)
-        self.chi = self.coefs**2 / variance
+        self.se = variance**0.5
+        self.chi = (self.coefs / self.se)**2
+        chi2_cdf = np.vectorize(lambda t : 1-chi2.cdf(t,1))
+        self.pvals = chi2_cdf(self.chi)
 
     def summary(self):
-        raise NotImplementedError
+        out = pd.DataFrame({'Coefficient' : self.coefs,
+            'Std. Error' : self.se,
+            'Chi-square' : self.chi,
+            'p-value' : self.pvals})
+        return out
 
-    def __init__(self):
-        return None
+    def __init__(self, X, y, **kwargs):
+        self.max_iter = 50
 
-class LogisticModel(Optimizer):
+        if isinstance(X, dd.DataFrame):
+            self.names = X.columns
+            self.X = X.values
+            M = self.X.shape[1]
+        elif isinstance(X, dd.Series):
+            self.names = [X.name]
+            self.X = X.values
+            M = 1
+        else:
+            self.X = X
+            M = self.X.shape[1]
+
+        if isinstance(y, dd.DataFrame):
+            self.y_name = y.columns[0]
+            self.y = y.values[:,0]
+        elif isinstance(y, dd.Series):
+            self.y_name = y.name
+            self.y = y.values
+        else:
+            self.y = y
+
+        self = self.initialize(M)
+
+class LogisticModel(Model):
 
     def gradient(self,Xbeta):
         p = sigmoid(Xbeta)
@@ -259,11 +298,9 @@ class LogisticModel(Optimizer):
         return da.log1p(eXbeta).sum() - self.y.dot(Xbeta)
 
     def __init__(self, X, y, **kwargs):
-        super(LogisticModel, self).__init__(**kwargs)
-        self.X, self.y = X, y
-        self.init = self.initialize(X.shape[1])
+        super(LogisticModel, self).__init__(X, y, **kwargs)
 
-class NormalModel(Optimizer):
+class NormalModel(Model):
 
     def gradient(self,Xbeta):
         return self.X.T.dot(Xbeta) - self.X.T.dot(self.y)
@@ -275,6 +312,19 @@ class NormalModel(Optimizer):
         return ((self.y - Xbeta)**2).sum()
 
     def __init__(self, X, y, **kwargs):
+        super(NormalModel, self).__init__(X, y, **kwargs)
+
+class PoissonModel(Model):
+
+    def gradient(self,Xbeta):
+        raise NotImplementedError
+
+    def hessian(self,Xbeta):
+        raise NotImplementedError
+
+    def func(self,Xbeta):
+        raise NotImplementedError
+
+    def __init__(self, X, y, **kwargs):
         super(NormalModel, self).__init__(**kwargs)
         self.X, self.y = X, y
-        self.init = self.initialize(X.shape[1])
