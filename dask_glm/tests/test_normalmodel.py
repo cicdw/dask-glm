@@ -4,6 +4,8 @@ from dask_glm.models import NormalModel
 import numpy as np
 import unittest
 
+from IPython import embed
+
 def generate_2pt_line():
     '''Generates trivial data.'''
     X = da.from_array(np.array([[0], [1]]), chunks=2)
@@ -36,6 +38,16 @@ class TestNormal(unittest.TestCase):
         A = A.assign(y=dd.from_dask_array(y[:,0]))
         model = NormalModel(X=A['var1'], y=A['y'])
         assert model.names[0] == 'var1'
+
+    def test_gradient_fit(self):
+        '''Testing gradient_descent fit with Series input.'''
+        y, X = generate_2pt_line()
+        A = dd.from_dask_array(X)
+        A.columns = ['var1']
+        A = A.assign(y=dd.from_dask_array(y[:,0]))
+        model = NormalModel(X=A[['var1']], y=A['y'])
+        model = model.fit(method='gradient_descent')
+        assert np.isclose(model.coefs[0], 1.0)
 
     def test_naive_fit(self):
         '''Testing simple linear fit with Series input.'''

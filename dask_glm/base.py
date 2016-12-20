@@ -7,9 +7,41 @@ import numpy as np
 import pandas as pd
 from scipy.stats import chi2
 
+@dispatch(np.ndarray)
+def sigmoid(x):
+    '''Sigmoid function of x.'''
+    return 1/(1+np.exp(-x))
+
+@dispatch(da.Array)
 def sigmoid(x):
     '''Sigmoid function of x.'''
     return 1/(1+da.exp(-x))
+
+@dispatch(np.ndarray)
+def exp(A):
+    return np.exp(A)
+
+@dispatch(da.Array)
+def exp(A):
+    return da.exp(A)
+
+@dispatch(np.ndarray)
+def log1p(A):
+    return np.log1p(A)
+
+@dispatch(da.Array)
+def log1p(A):
+    return da.log1p(A)
+
+@dispatch(da.Array,np.ndarray)
+def dot(A,B):
+    B = da.from_array(B, chunks=A.shape)
+    return da.dot(A,B)
+
+@dispatch(np.ndarray,da.Array)
+def dot(A,B):
+    A = da.from_array(A, chunks=B.shape)
+    return da.dot(A,B)
 
 @dispatch(np.ndarray,np.ndarray)
 def dot(A,B):
@@ -18,6 +50,14 @@ def dot(A,B):
 @dispatch(da.Array,da.Array)
 def dot(A,B):
     return da.dot(A,B)
+
+@dispatch(np.ndarray)
+def sum(A):
+    return np.sum(A)
+
+@dispatch(da.Array)
+def sum(A):
+    return da.sum(A)
 
 class Optimizer(object):
 
@@ -42,7 +82,7 @@ class Optimizer(object):
     def func(self):
         raise NotImplementedError
 
-    def bfgs(self, verbose=True, max_steps=100):
+    def bfgs(self, X, y, verbose=True, max_steps=100):
         recalcRate = 10
         stepSize = 1.0
         stepGrowth = 1.25
@@ -50,17 +90,13 @@ class Optimizer(object):
         M = beta.shape[0]
         Hk = np.eye(M)
 
-        if verbose:
-            print('##       -f        |df/f|    step')
-            print('----------------------------------------------')
-
         for k in range(max_steps):
 
             if k % recalcRate==0:
-                Xbeta = self.X.dot(beta)
-                func = self.func(Xbeta)
+                Xbeta = X.dot(beta)
+                func = self.func(Xbeta, y)
 
-            gradient = self.gradient(Xbeta)
+            gradient = self.gradient(Xbeta, y)
 
             if k:
                 yk += gradient
@@ -70,21 +106,21 @@ class Optimizer(object):
 
             step = Hk.dot(gradient)
             steplen = step.dot(gradient)
-            Xstep = self.X.dot(step)
+            Xstep = X.dot(step)
 
-            Xbeta, func, steplen, step, Xstep = da.compute(
-                    Xbeta, func, steplen, step, Xstep)
+            Xbeta, func, steplen, step, Xstep, y0 = da.compute(
+                    Xbeta, func, steplen, step, Xstep, y)
 
             # Compute the step size
             if k==0:
                 stepSize, beta, Xbeta, fnew = self._backtrack(func,
                     beta, Xbeta, step, Xstep,
-                    stepSize, steplen, **{'backtrackMult' : 0.1,
+                    stepSize, steplen, y0, **{'backtrackMult' : 0.1,
                         'armijoMult' : 1e-4})
             else:
                 stepSize, beta, Xbeta, fnew = self._backtrack(func,
                     beta, Xbeta, step, Xstep,
-                    stepSize, steplen, **{'armijoMult' : 1e-4})
+                    stepSize, steplen, y0, **{'armijoMult' : 1e-4})
 
             yk = -gradient
             sk = -stepSize*step
@@ -97,9 +133,7 @@ class Optimizer(object):
                     print('No more progress')
 
             df /= max(func, fnew)
-            if verbose:
-                print('%2d  %.6e %9.2e  %.1e' % (k + 1, func, df, stepSize))
-            if df < 1e-14:
+            if df < 1e-8:
                 print('Converged')
                 break
 
@@ -112,10 +146,10 @@ class Optimizer(object):
     def fit(self, X, y, method=None, **kwargs):
         raise NotImplementedError
 
-    def _newton_step(self,curr,Xcurr):
+    def _newton_step(self,curr,Xcurr, y):
 
-        hessian = self.hessian(Xcurr)
-        grad = self.gradient(Xcurr)
+        hessian = self.hessian(Xcurr, y)
+        grad = self.gradient(Xcurr, y)
 
         # should this be dask or numpy?
         step, *_ = da.linalg.lstsq(hessian, grad)
@@ -123,58 +157,60 @@ class Optimizer(object):
         
         return beta.compute()
 
-    def newton(self):
+    def newton(self, X, y):
     
         beta = self.init
-        Xbeta = self.X.dot(beta)
+        Xbeta = X.dot(beta)
 
         iter_count = 0
         converged = False
 
         while not converged:
             beta_old = beta
-            beta = self._newton_step(beta,Xbeta)
-            Xbeta = self.X.dot(beta)
+            beta = self._newton_step(beta,Xbeta,y)
+            Xbeta = X.dot(beta)
             iter_count += 1
             
             converged = (self._check_convergence(beta_old, beta) & (iter_count<self.max_iter))
 
         return beta
 
-    def gradient_descent(self, max_steps=100, verbose=True):
+    def gradient_descent(self, X, y, max_steps=100, verbose=True, tol=1e-8):
         recalcRate = 10
         stepSize = 1.0
         stepGrowth = 1.25
         beta = self.init
-
-        if verbose:
-            print('##       -f        |df/f|    step')
-            print('----------------------------------------------')
-
+        y = y.compute()
+    
         for k in range(max_steps):
 
             if k % recalcRate==0:
-                Xbeta = self.X.dot(beta)
-                func = self.func(Xbeta)
+                Xbeta = X.dot(beta)
+                func = self.func(Xbeta, y)
 
-            gradient = self.gradient(Xbeta)
+            gradient = self.gradient(Xbeta, y)
             steplen = (gradient**2).sum()
-            Xgradient = self.X.dot(gradient)
+            Xgradient = X.dot(gradient)
 
             Xbeta, func, gradient, steplen, Xgradient = da.compute(
                     Xbeta, func, gradient, steplen, Xgradient)
 
+            if k:
+                stepSize *= osteplen / steplen
+
+            beta_old = beta
             # Compute the step size
             if k==0:
                 stepSize, beta, Xbeta, fnew = self._backtrack(func,
                     beta, Xbeta, gradient, Xgradient,
-                    stepSize, steplen, **{'backtrackMult' : 0.1})
+                    stepSize, steplen, y, **{'backtrackMult' : 0.1})
             else:
                 stepSize, beta, Xbeta, fnew = self._backtrack(func,
                     beta, Xbeta, gradient, Xgradient,
-                    stepSize, steplen)
+                    stepSize, steplen, y)
 
-            stepSize *= stepGrowth
+            osteplen = steplen
+#            stepSize *= stepGrowth
             df = func-fnew
             func = fnew
 
@@ -182,10 +218,9 @@ class Optimizer(object):
                 if verbose:
                     print('No more progress')
 
+            ## is this the right convergence criterion?
             df /= max(func, fnew)
-            if verbose:
-                print('%2d  %.6e %9.2e  %.1e' % (k + 1, func, df, stepSize))
-            if df < 1e-14:
+            if df < tol:
                 print('Converged')
                 break
 
@@ -193,10 +228,10 @@ class Optimizer(object):
 
     ## this is currently specific to linear models
     def _backtrack(self, curr_val, curr, Xcurr, 
-        step, Xstep, stepSize, steplen, **kwargs):
+        step, Xstep, stepSize, steplen, y, **kwargs):
 
         ## theres got to be a better way...
-        params = {'backtrackMult' : 0.5,
+        params = {'backtrackMult' : 0.1,
             'armijoMult' : 0.1}
 
         params.update(kwargs)
@@ -212,7 +247,7 @@ class Optimizer(object):
                 break
             Xbeta = Xcurr - stepSize*Xstep
 
-            func = self.func(Xbeta)
+            func = self.func(Xbeta, y)
             df = curr_val - func
             if df >= armijoMult * stepSize * steplen:
                 break
@@ -231,13 +266,13 @@ class Model(Optimizer):
             'gradient_descent' : self.gradient_descent,
             'BFGS' : self.bfgs}
 
-        self.coefs = methods[method]()
+        self.coefs = methods[method](self.X, self.y)
         self._pvalues()
 
         return self
 
     def _pvalues(self, names={}):
-        H = self.hessian(self.X.dot(self.coefs))
+        H = self.hessian(self.X.dot(self.coefs), self.y)
         covar = np.linalg.inv(H.compute())
         variance = np.diag(covar)
         self.se = variance**0.5
@@ -247,18 +282,18 @@ class Model(Optimizer):
 
     def summary(self):
         if hasattr(self, 'names'):
-            out = pd.DataFrame({'Coefficient' : self.coefs,
-                'Std. Error' : self.se,
-                'Chi-square' : self.chi,
-                'p-value' : self.pvals}, index=self.names)
+            out = pd.DataFrame({'coefficient' : self.coefs,
+                'std_error' : self.se,
+                'chi_square' : self.chi,
+                'p_value' : self.pvals}, index=self.names)
         else:
-            out = pd.DataFrame({'Coefficient' : self.coefs,
-                'Std. Error' : self.se,
-                'Chi-square' : self.chi,
-                'p-value' : self.pvals})
-        return out
+            out = pd.DataFrame({'coefficient' : self.coefs,
+                'std_error' : self.se,
+                'chi_square' : self.chi,
+                'p_value' : self.pvals})
+        return out[['coefficient', 'std_error', 'chi_square', 'p_value']]
 
-    def __init__(self, X, y, **kwargs):
+    def __init__(self, X, y, reg=None, **kwargs):
         self.max_iter = 50
 
         if isinstance(X, dd.DataFrame):
@@ -275,11 +310,52 @@ class Model(Optimizer):
 
         if isinstance(y, dd.DataFrame):
             self.y_name = y.columns[0]
-            self.y = y.values[:,0]
+            self.y = y.values[:,0] 
+
+            ##FIXME
+#            self.y._chunks = ((self.y.compute().shape[0],),)
         elif isinstance(y, dd.Series):
             self.y_name = y.name
             self.y = y.values
+
+            ##FIXME
+#            self.y._chunks = ((self.y.compute().shape[0],),)
         else:
             self.y = y
 
         self = self.initialize(M)
+
+class Prior(object):
+
+    def gradient(self, beta):
+        raise NotImplementedError
+
+    def hessian(self, beta):
+        raise NotImplementedError
+
+    def func(self, beta):
+        raise NotImplementedError
+
+    def prox(self, beta):
+        raise NotImplementedError
+
+    def __init__(self):
+        
+        return self
+
+class RegularizedModel(Model):
+
+    def gradient(self, Xbeta, beta):
+        return self.base.gradient(Xbeta) + self.prior.gradient(beta)
+
+    def hessian(self, Xbeta, beta):
+        return self.base.hessian(Xbeta) + self.prior.hessian(beta)
+
+    def func(self, Xbeta, beta):
+        return self.base.func(Xbeta) + self.prior.func(beta)
+
+    def __init__(self, base_model, prior, **kwargs):
+        self.base = base_model
+        self.prior = prior
+        self.X = base_model.X
+        self.y = base_model.y

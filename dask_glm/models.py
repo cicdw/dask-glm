@@ -10,38 +10,33 @@ from scipy.stats import chi2
 
 class LogisticModel(Model):
 
-    def gradient(self,Xbeta):
+    def gradient(self,Xbeta, y):
         p = sigmoid(Xbeta)
 #        p = (self.X.dot(beta)).map_blocks(sigmoid)
-        return self.X.T.dot(p-self.y)
+        return self.X.T.dot(p-y)
 
-    def hessian(self,Xbeta):
+    def hessian(self,Xbeta, y):
         p = sigmoid(Xbeta)
 #        p = (self.X.dot(beta)).map_blocks(sigmoid)
         return dot(p*(1-p)*self.X.T, self.X)
 
-    def func(self,Xbeta):
-        eXbeta = np.exp(Xbeta)
-        return np.sum(np.log1p(eXbeta)) - np.dot(self.y, Xbeta)
-
-    def negloglike(self,beta):
-        Xbeta = self.X.dot(beta)
-        eXbeta = da.exp(Xbeta)
-        return da.log1p(eXbeta).sum() - self.y.dot(Xbeta)
+    def func(self, Xbeta, y):
+        eXbeta = exp(Xbeta) # how does np.exp() interpret dask array
+        return sum(log1p(eXbeta)) - dot(y, Xbeta)
 
     def __init__(self, X, y, **kwargs):
         super(LogisticModel, self).__init__(X, y, **kwargs)
 
 class NormalModel(Model):
 
-    def gradient(self,Xbeta):
-        return self.X.T.dot(Xbeta) - self.X.T.dot(self.y)
+    def gradient(self,Xbeta, y):
+        return self.X.T.dot(Xbeta) - self.X.T.dot(y)
 
-    def hessian(self,Xbeta):
+    def hessian(self,Xbeta, y):
         return self.X.T.dot(self.X)
 
-    def func(self,Xbeta):
-        return ((self.y - Xbeta)**2).sum()
+    def func(self,Xbeta, y):
+        return ((y - Xbeta)**2).sum()
 
     def __init__(self, X, y, **kwargs):
         super(NormalModel, self).__init__(X, y, **kwargs)
