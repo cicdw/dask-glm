@@ -1,7 +1,10 @@
 from __future__ import division, print_function
-from dask_glm.base import Optimizer
-import numpy as np
 import unittest
+
+import numpy as np
+import pytest
+
+from dask_glm.base import Optimizer
 
 
 class QuadraticTest(Optimizer):
@@ -23,7 +26,7 @@ class QuadraticTest(Optimizer):
 
 class TestOptimizer(unittest.TestCase):
     '''Testing Optimizer Class.'''
-
+    @pytest.mark.skip()
     def test_quadratic_backtrack(self):
         '''Testing backtracking line search with univariate quadratic.'''
         quad = QuadraticTest(1)
