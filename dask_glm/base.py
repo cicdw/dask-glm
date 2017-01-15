@@ -11,13 +11,13 @@ from scipy.stats import chi2
 @dispatch(np.ndarray)
 def sigmoid(x):
     '''Sigmoid function of x.'''
-    return 1/(1+np.exp(-x))
+    return 1 / (1 + np.exp(-x))
 
 
 @dispatch(da.Array)
 def sigmoid(x):
     '''Sigmoid function of x.'''
-    return 1/(1+da.exp(-x))
+    return 1 / (1 + da.exp(-x))
 
 
 @dispatch(np.ndarray)
@@ -113,16 +113,16 @@ class Optimizer(object):
 
             if k:
                 yk += gradient
-                rhok = 1/yk.dot(sk)
-                adj = np.eye(M) - rhok*sk.dot(yk.T)
-                Hk = adj.dot(Hk.dot(adj.T)) + rhok*sk.dot(sk.T)
+                rhok = 1 / yk.dot(sk)
+                adj = np.eye(M) - rhok * sk.dot(yk.T)
+                Hk = adj.dot(Hk.dot(adj.T)) + rhok * sk.dot(sk.T)
 
             step = Hk.dot(gradient)
             steplen = step.dot(gradient)
             Xstep = X.dot(step)
 
             Xbeta, func, steplen, step, Xstep, y0 = da.compute(
-                    Xbeta, func, steplen, step, Xstep, y)
+                Xbeta, func, steplen, step, Xstep, y)
 
             # Compute the step size
             if k == 0:
@@ -135,9 +135,9 @@ class Optimizer(object):
                                                               armijoMult=1e-4)
 
             yk = -gradient
-            sk = -stepSize*step
+            sk = -stepSize * step
             stepSize = 1.0
-            df = func-fnew
+            df = func - fnew
             func = fnew
 
             if stepSize == 0:
@@ -163,7 +163,7 @@ class Optimizer(object):
         grad = self.gradient(Xcurr, y)
 
         # should this be dask or numpy?
-        step, *_ = da.linalg.lstsq(hessian, grad)  # *_ notation is only python3.x
+        step = da.linalg.lstsq(hessian, grad)[0]
         beta = curr - step
 
         return beta.compute()
@@ -204,7 +204,7 @@ class Optimizer(object):
             Xgradient = X.dot(gradient)
 
             Xbeta, func, gradient, steplen, Xgradient = da.compute(
-                    Xbeta, func, gradient, steplen, Xgradient)
+                Xbeta, func, gradient, steplen, Xgradient)
 
             if k:
                 stepSize *= osteplen / steplen
@@ -221,7 +221,7 @@ class Optimizer(object):
 
             osteplen = steplen
 #            stepSize *= stepGrowth
-            df = func-fnew
+            df = func - fnew
             func = fnew
 
             if stepSize == 0:
@@ -248,12 +248,12 @@ class Optimizer(object):
         Xbeta = Xcurr
 
         for ii in range(100):
-            beta = curr - stepSize*step
+            beta = curr - stepSize * step
 
             if ii and np.array_equal(curr, beta):
                 stepSize = 0
                 break
-            Xbeta = Xcurr - stepSize*Xstep
+            Xbeta = Xcurr - stepSize * Xstep
 
             func = self.func(Xbeta, y)
             df = curr_val - func
@@ -285,7 +285,7 @@ class Model(Optimizer):
         variance = np.diag(covar)
         self.se = variance**0.5
         self.chi = (self.coefs / self.se)**2
-        chi2_cdf = np.vectorize(lambda t: 1-chi2.cdf(t, 1))
+        chi2_cdf = np.vectorize(lambda t: 1 - chi2.cdf(t, 1))
         self.pvals = chi2_cdf(self.chi)
 
     def summary(self):

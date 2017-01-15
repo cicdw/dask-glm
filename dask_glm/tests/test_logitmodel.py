@@ -69,6 +69,3 @@ class TestLogistic(unittest.TestCase):
 #        model = LogisticModel(X=A[['var1']], y=A[['y']])
 #        model = model.fit()
 #        assert np.isclose(model.coefs[0], 1.0)
-
-if __name__ == '__main__':
-    unittest.main()

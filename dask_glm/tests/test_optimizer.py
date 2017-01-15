@@ -9,7 +9,6 @@ from dask_glm.base import Optimizer
 
 class QuadraticTest(Optimizer):
     '''Testing Optimizer through simple quadratic function.'''
-
     def func(self, x):
         return 0.5 * (x - 3)**2
 
