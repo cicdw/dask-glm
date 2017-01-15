@@ -4,11 +4,13 @@ from dask_glm.models import LogisticModel
 import numpy as np
 import unittest
 
+
 def generate_2pt_line():
     '''Generates trivial data.'''
     X = da.from_array(np.array([[0], [1]]), chunks=2)
     y = da.from_array(np.array([[0], [1]]), chunks=2)
-    return y,X
+    return y, X
+
 
 class TestLogistic(unittest.TestCase):
     '''Testing Logistic Model Class.'''
@@ -17,23 +19,23 @@ class TestLogistic(unittest.TestCase):
         '''Testing array inputs.'''
         y, X = generate_2pt_line()
         model = LogisticModel(X=X, y=y)
-        assert model.X.shape == (2,1)
+        assert model.X.shape == (2, 1)
 
     def test_dataframe_input(self):
         '''Testing dataframe inputs.'''
         y, X = generate_2pt_line()
         A = dd.from_dask_array(X)
         A.columns = ['var1']
-        A = A.assign(y=dd.from_dask_array(y[:,0]))
+        A = A.assign(y=dd.from_dask_array(y[:, 0]))
         model = LogisticModel(X=A[['var1']], y=A[['y']])
         assert model.X.shape[1] == 1
-        
+
     def test_series_input(self):
         '''Testing Series inputs.'''
         y, X = generate_2pt_line()
         A = dd.from_dask_array(X)
         A.columns = ['var1']
-        A = A.assign(y=dd.from_dask_array(y[:,0]))
+        A = A.assign(y=dd.from_dask_array(y[:, 0]))
         model = LogisticModel(X=A['var1'], y=A['y'])
         assert model.names[0] == 'var1'
 
@@ -68,5 +70,5 @@ class TestLogistic(unittest.TestCase):
 #        model = model.fit()
 #        assert np.isclose(model.coefs[0], 1.0)
 
-if __name__=='__main__':
+if __name__ == '__main__':
     unittest.main()

@@ -4,13 +4,13 @@ from dask_glm.models import NormalModel
 import numpy as np
 import unittest
 
-from IPython import embed
 
 def generate_2pt_line():
     '''Generates trivial data.'''
     X = da.from_array(np.array([[0], [1]]), chunks=2)
     y = da.from_array(np.array([[0], [1]]), chunks=2)
-    return y,X
+    return y, X
+
 
 class TestNormal(unittest.TestCase):
     '''Testing Normal Model Class.'''
@@ -19,23 +19,23 @@ class TestNormal(unittest.TestCase):
         '''Testing array inputs.'''
         y, X = generate_2pt_line()
         model = NormalModel(X=X, y=y)
-        assert model.X.shape == (2,1)
+        assert model.X.shape == (2, 1)
 
     def test_dataframe_input(self):
         '''Testing dataframe inputs.'''
         y, X = generate_2pt_line()
         A = dd.from_dask_array(X)
         A.columns = ['var1']
-        A = A.assign(y=dd.from_dask_array(y[:,0]))
+        A = A.assign(y=dd.from_dask_array(y[:, 0]))
         model = NormalModel(X=A[['var1']], y=A[['y']])
         assert model.X.shape[1] == 1
-        
+
     def test_series_input(self):
         '''Testing Series inputs.'''
         y, X = generate_2pt_line()
         A = dd.from_dask_array(X)
         A.columns = ['var1']
-        A = A.assign(y=dd.from_dask_array(y[:,0]))
+        A = A.assign(y=dd.from_dask_array(y[:, 0]))
         model = NormalModel(X=A['var1'], y=A['y'])
         assert model.names[0] == 'var1'
 
@@ -44,7 +44,7 @@ class TestNormal(unittest.TestCase):
         y, X = generate_2pt_line()
         A = dd.from_dask_array(X)
         A.columns = ['var1']
-        A = A.assign(y=dd.from_dask_array(y[:,0]))
+        A = A.assign(y=dd.from_dask_array(y[:, 0]))
         model = NormalModel(X=A[['var1']], y=A['y'])
         model = model.fit(method='gradient_descent')
         assert np.isclose(model.coefs[0], 1.0)
@@ -54,7 +54,7 @@ class TestNormal(unittest.TestCase):
         y, X = generate_2pt_line()
         A = dd.from_dask_array(X)
         A.columns = ['var1']
-        A = A.assign(y=dd.from_dask_array(y[:,0]))
+        A = A.assign(y=dd.from_dask_array(y[:, 0]))
         model = NormalModel(X=A['var1'], y=A['y'])
         model = model.fit()
         assert np.isclose(model.coefs[0], 1.0)
@@ -64,7 +64,7 @@ class TestNormal(unittest.TestCase):
         y, X = generate_2pt_line()
         A = dd.from_dask_array(X)
         A.columns = ['var1']
-        A = A.assign(y=dd.from_dask_array(y[:,0]))
+        A = A.assign(y=dd.from_dask_array(y[:, 0]))
         model = NormalModel(X=A[['var1']], y=A[['y']])
         model = model.fit()
         assert np.isclose(model.se[0], 1)
@@ -75,10 +75,7 @@ class TestNormal(unittest.TestCase):
         y, X = generate_2pt_line()
         A = dd.from_dask_array(X)
         A.columns = ['var1']
-        A = A.assign(y=dd.from_dask_array(y[:,0]))
+        A = A.assign(y=dd.from_dask_array(y[:, 0]))
         model = NormalModel(X=A[['var1']], y=A[['y']])
         model = model.fit()
         assert np.isclose(model.coefs[0], 1.0)
-
-if __name__=='__main__':
-    unittest.main()

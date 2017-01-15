@@ -7,57 +7,70 @@ import numpy as np
 import pandas as pd
 from scipy.stats import chi2
 
+
 @dispatch(np.ndarray)
 def sigmoid(x):
     '''Sigmoid function of x.'''
     return 1/(1+np.exp(-x))
+
 
 @dispatch(da.Array)
 def sigmoid(x):
     '''Sigmoid function of x.'''
     return 1/(1+da.exp(-x))
 
+
 @dispatch(np.ndarray)
 def exp(A):
     return np.exp(A)
+
 
 @dispatch(da.Array)
 def exp(A):
     return da.exp(A)
 
+
 @dispatch(np.ndarray)
 def log1p(A):
     return np.log1p(A)
+
 
 @dispatch(da.Array)
 def log1p(A):
     return da.log1p(A)
 
-@dispatch(da.Array,np.ndarray)
-def dot(A,B):
+
+@dispatch(da.Array, np.ndarray)
+def dot(A, B):
     B = da.from_array(B, chunks=A.shape)
-    return da.dot(A,B)
+    return da.dot(A, B)
 
-@dispatch(np.ndarray,da.Array)
-def dot(A,B):
+
+@dispatch(np.ndarray, da.Array)
+def dot(A, B):
     A = da.from_array(A, chunks=B.shape)
-    return da.dot(A,B)
+    return da.dot(A, B)
 
-@dispatch(np.ndarray,np.ndarray)
-def dot(A,B):
-    return np.dot(A,B)
 
-@dispatch(da.Array,da.Array)
-def dot(A,B):
-    return da.dot(A,B)
+@dispatch(np.ndarray, np.ndarray)
+def dot(A, B):
+    return np.dot(A, B)
+
+
+@dispatch(da.Array, da.Array)
+def dot(A, B):
+    return da.dot(A, B)
+
 
 @dispatch(np.ndarray)
 def sum(A):
     return np.sum(A)
 
+
 @dispatch(da.Array)
 def sum(A):
     return da.sum(A)
+
 
 class Optimizer(object):
 
@@ -66,8 +79,8 @@ class Optimizer(object):
 
         if value:
             self.init = value
-        elif method=='random':
-            self.init = np.random.normal(0,1,size)
+        elif method == 'random':
+            self.init = np.random.normal(0, 1, size)
         else:
             self.init = np.zeros(size)
 
@@ -92,7 +105,7 @@ class Optimizer(object):
 
         for k in range(max_steps):
 
-            if k % recalcRate==0:
+            if k % recalcRate == 0:
                 Xbeta = X.dot(beta)
                 func = self.func(Xbeta, y)
 
@@ -112,15 +125,14 @@ class Optimizer(object):
                     Xbeta, func, steplen, step, Xstep, y)
 
             # Compute the step size
-            if k==0:
-                stepSize, beta, Xbeta, fnew = self._backtrack(func,
-                    beta, Xbeta, step, Xstep,
-                    stepSize, steplen, y0, **{'backtrackMult' : 0.1,
-                        'armijoMult' : 1e-4})
+            if k == 0:
+                stepSize, beta, Xbeta, fnew = self._backtrack(func, beta, Xbeta, step, Xstep,
+                                                              stepSize, steplen, y0,
+                                                              backtrackMult=0.1, armijoMult=1e-4)
             else:
-                stepSize, beta, Xbeta, fnew = self._backtrack(func,
-                    beta, Xbeta, step, Xstep,
-                    stepSize, steplen, y0, **{'armijoMult' : 1e-4})
+                stepSize, beta, Xbeta, fnew = self._backtrack(func, beta, Xbeta, step, Xstep,
+                                                              stepSize, steplen, y0,
+                                                              armijoMult=1e-4)
 
             yk = -gradient
             sk = -stepSize*step
@@ -141,24 +153,23 @@ class Optimizer(object):
 
     def _check_convergence(self, old, new, tol=1e-4, method=None):
         coef_change = np.absolute(old - new)
-        return not np.any(coef_change>tol)
+        return not np.any(coef_change > tol)
 
     def fit(self, X, y, method=None, **kwargs):
         raise NotImplementedError
 
-    def _newton_step(self,curr,Xcurr, y):
-
+    def _newton_step(self, curr, Xcurr, y):
         hessian = self.hessian(Xcurr, y)
         grad = self.gradient(Xcurr, y)
 
         # should this be dask or numpy?
-        step, *_ = da.linalg.lstsq(hessian, grad)
+        step, *_ = da.linalg.lstsq(hessian, grad)  # *_ notation is only python3.x
         beta = curr - step
-        
+
         return beta.compute()
 
     def newton(self, X, y):
-    
+
         beta = self.init
         Xbeta = X.dot(beta)
 
@@ -167,11 +178,11 @@ class Optimizer(object):
 
         while not converged:
             beta_old = beta
-            beta = self._newton_step(beta,Xbeta,y)
+            beta = self._newton_step(beta, Xbeta, y)
             Xbeta = X.dot(beta)
             iter_count += 1
-            
-            converged = (self._check_convergence(beta_old, beta) & (iter_count<self.max_iter))
+
+            converged = (self._check_convergence(beta_old, beta) & (iter_count < self.max_iter))
 
         return beta
 
@@ -181,10 +192,10 @@ class Optimizer(object):
         stepGrowth = 1.25
         beta = self.init
         y = y.compute()
-    
+
         for k in range(max_steps):
 
-            if k % recalcRate==0:
+            if k % recalcRate == 0:
                 Xbeta = X.dot(beta)
                 func = self.func(Xbeta, y)
 
@@ -200,14 +211,13 @@ class Optimizer(object):
 
             beta_old = beta
             # Compute the step size
-            if k==0:
-                stepSize, beta, Xbeta, fnew = self._backtrack(func,
-                    beta, Xbeta, gradient, Xgradient,
-                    stepSize, steplen, y, **{'backtrackMult' : 0.1})
+            if k == 0:
+                stepSize, beta, Xbeta, fnew = self._backtrack(func, beta, Xbeta, gradient,
+                                                              Xgradient, stepSize, steplen, y,
+                                                              backtrackMult=0.1)
             else:
-                stepSize, beta, Xbeta, fnew = self._backtrack(func,
-                    beta, Xbeta, gradient, Xgradient,
-                    stepSize, steplen, y)
+                stepSize, beta, Xbeta, fnew = self._backtrack(func, beta, Xbeta, gradient,
+                                                              Xgradient, stepSize, steplen, y)
 
             osteplen = steplen
 #            stepSize *= stepGrowth
@@ -218,7 +228,7 @@ class Optimizer(object):
                 if verbose:
                     print('No more progress')
 
-            ## is this the right convergence criterion?
+            # is this the right convergence criterion?
             df /= max(func, fnew)
             if df < tol:
                 print('Converged')
@@ -226,13 +236,11 @@ class Optimizer(object):
 
         return beta
 
-    ## this is currently specific to linear models
-    def _backtrack(self, curr_val, curr, Xcurr, 
-        step, Xstep, stepSize, steplen, y, **kwargs):
+    # this is currently specific to linear models
+    def _backtrack(self, curr_val, curr, Xcurr, step, Xstep, stepSize, steplen, y, **kwargs):
 
-        ## theres got to be a better way...
-        params = {'backtrackMult' : 0.1,
-            'armijoMult' : 0.1}
+        # theres got to be a better way...
+        params = {'backtrackMult': 0.1, 'armijoMult': 0.1}
 
         params.update(kwargs)
         backtrackMult = params['backtrackMult']
@@ -258,13 +266,13 @@ class Optimizer(object):
     def __init__(self, max_iter=50, init_type='zeros'):
         self.max_iter = 50
 
+
 class Model(Optimizer):
     '''Class for holding all output statistics.'''
 
-    def fit(self,method='newton',**kwargs):
-        methods = {'newton' : self.newton, 
-            'gradient_descent' : self.gradient_descent,
-            'BFGS' : self.bfgs}
+    def fit(self, method='newton', **kwargs):
+        methods = {'newton': self.newton, 'gradient_descent': self.gradient_descent,
+                   'BFGS': self.bfgs}
 
         self.coefs = methods[method](self.X, self.y)
         self._pvalues()
@@ -277,20 +285,20 @@ class Model(Optimizer):
         variance = np.diag(covar)
         self.se = variance**0.5
         self.chi = (self.coefs / self.se)**2
-        chi2_cdf = np.vectorize(lambda t : 1-chi2.cdf(t,1))
+        chi2_cdf = np.vectorize(lambda t: 1-chi2.cdf(t, 1))
         self.pvals = chi2_cdf(self.chi)
 
     def summary(self):
         if hasattr(self, 'names'):
-            out = pd.DataFrame({'coefficient' : self.coefs,
-                'std_error' : self.se,
-                'chi_square' : self.chi,
-                'p_value' : self.pvals}, index=self.names)
+            out = pd.DataFrame({'coefficient': self.coefs,
+                                'std_error': self.se,
+                                'chi_square': self.chi,
+                                'p_value': self.pvals}, index=self.names)
         else:
-            out = pd.DataFrame({'coefficient' : self.coefs,
-                'std_error' : self.se,
-                'chi_square' : self.chi,
-                'p_value' : self.pvals})
+            out = pd.DataFrame({'coefficient': self.coefs,
+                                'std_error': self.se,
+                                'chi_square': self.chi,
+                                'p_value': self.pvals})
         return out[['coefficient', 'std_error', 'chi_square', 'p_value']]
 
     def __init__(self, X, y, reg=None, **kwargs):
@@ -310,20 +318,21 @@ class Model(Optimizer):
 
         if isinstance(y, dd.DataFrame):
             self.y_name = y.columns[0]
-            self.y = y.values[:,0] 
+            self.y = y.values[:, 0]
 
-            ##FIXME
+            # FIXME
 #            self.y._chunks = ((self.y.compute().shape[0],),)
         elif isinstance(y, dd.Series):
             self.y_name = y.name
             self.y = y.values
 
-            ##FIXME
+            # FIXME
 #            self.y._chunks = ((self.y.compute().shape[0],),)
         else:
             self.y = y
 
         self = self.initialize(M)
+
 
 class Prior(object):
 
@@ -340,8 +349,9 @@ class Prior(object):
         raise NotImplementedError
 
     def __init__(self):
-        
+
         return self
+
 
 class RegularizedModel(Model):
 
