@@ -1,5 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
+from dask import delayed, persist, compute
 from dask_glm.utils import *
 import dask.array as da
 import dask.dataframe as dd
@@ -41,15 +42,18 @@ def bfgs(X, y, max_iter=50, tol=1e-14):
         steplen = dot(step, gradient)
         Xstep = dot(X, step)
 
-        Xbeta, gradient, func, steplen, step, Xstep = da.compute(
-                Xbeta, gradient, func, steplen, step, Xstep)
-
         ## backtracking line search
         lf = func
-        stepSize, beta, Xbeta, func = compute_stepsize(beta, step,
-                Xbeta, Xstep, y_local, func,
-                **{'backtrackMult' : backtrackMult, 
-                    'armijoMult' : armijoMult, 'stepSize' : stepSize})
+        old_Xbeta = Xbeta
+        stepSize, beta, Xbeta, func = delayed(compute_stepsize, nout=4)(beta, step,
+                Xbeta, Xstep, y_local, func, backtrackMult=backtrackMult,
+                armijoMult=armijoMult, stepSize=stepSize)
+
+        stepSize, Xbeta, gradient, lf, func, step = persist(stepSize, Xbeta, gradient, lf, func, step)
+        Xbeta = da.from_delayed(Xbeta, shape=old_Xbeta.shape, dtype=old_Xbeta.dtype)
+
+        stepSize, lf, func = compute(stepSize, lf, func)
+
         if stepSize == 0:
             print('No more progress')
             break
@@ -58,14 +62,14 @@ def bfgs(X, y, max_iter=50, tol=1e-14):
         eXbeta = exp(Xbeta)
 
         yk = -gradient
-        sk = -stepSize*step
+        sk = -stepSize * step
         stepSize = 1.0
 
         if stepSize == 0:
             if verbose:
                 print('No more progress')
 
-        df = lf-func
+        df = lf - func
         df /= max(func, lf)
         if df < tol:
             print('Converged')
@@ -83,11 +87,11 @@ def loglike(Xbeta, y):
 def compute_stepsize(beta, step, Xbeta, Xstep, y, curr_val, **kwargs):
 
     params = {'stepSize' : 1.0,
-            'armijoMult' : 0.1,
-            'backtrackMult' : 0.1}
+              'armijoMult' : 0.1,
+              'backtrackMult' : 0.1}
     params.update(kwargs)
     stepSize, armijo, mult = params['stepSize'], params['armijoMult'], params['backtrackMult']
-    
+
     obeta, oXbeta = beta, Xbeta
     steplen = (step**2).sum()
     lf = curr_val
@@ -138,7 +142,7 @@ def gradient_descent(X, y, max_steps=100, tol=1e-14):
         lf = func
         stepSize, beta, Xbeta, func = compute_stepsize(beta, gradient,
                 Xbeta, Xgradient, y_local, func,
-                **{'backtrackMult' : backtrackMult, 
+                **{'backtrackMult' : backtrackMult,
                     'armijoMult' : armijoMult, 'stepSize' : stepSize})
         if stepSize == 0:
             print('No more progress')
