@@ -77,21 +77,15 @@ def bfgs(X, y, max_iter=50, tol=1e-14):
 
     return beta
 
-@jit
+@jit(nogil=True)
 def loglike(Xbeta, y):
 #        # This prevents overflow
 #        if np.all(Xbeta < 700):
     eXbeta = np.exp(Xbeta)
     return np.sum(np.log1p(eXbeta)) - np.dot(y, Xbeta)
 
-def compute_stepsize(beta, step, Xbeta, Xstep, y, curr_val, **kwargs):
-
-    params = {'stepSize' : 1.0,
-              'armijoMult' : 0.1,
-              'backtrackMult' : 0.1}
-    params.update(kwargs)
-    stepSize, armijo, mult = params['stepSize'], params['armijoMult'], params['backtrackMult']
-
+def compute_stepsize(beta, step, Xbeta, Xstep, y, curr_val, stepSize=1.0,
+        armijoMult=0.1, backtrackMult=0.1):
     obeta, oXbeta = beta, Xbeta
     steplen = (step**2).sum()
     lf = curr_val
@@ -104,9 +98,9 @@ def compute_stepsize(beta, step, Xbeta, Xstep, y, curr_val, **kwargs):
 
         func = loglike(Xbeta, y)
         df = lf - func
-        if df >= armijo * stepSize * steplen:
+        if df >= armijoMult * stepSize * steplen:
             break
-        stepSize *= mult
+        stepSize *= backtrackMult
 
     return stepSize, beta, Xbeta, func
 
