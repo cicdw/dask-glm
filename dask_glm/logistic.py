@@ -7,12 +7,11 @@ import dask.dataframe as dd
 from numba import jit
 import numpy as np
 
+
 def bfgs(X, y, max_iter=50, tol=1e-14):
     '''Simple implementation of BFGS.'''
 
     n, p = X.shape
-
-    y_local = da.compute(y)[0]
 
     recalcRate = 10
     stepSize = 1.0
@@ -46,10 +45,12 @@ def bfgs(X, y, max_iter=50, tol=1e-14):
         lf = func
         old_Xbeta = Xbeta
         stepSize, beta, Xbeta, func = delayed(compute_stepsize, nout=4)(beta, step,
-                Xbeta, Xstep, y_local, func, backtrackMult=backtrackMult,
+                Xbeta, Xstep, y, func, backtrackMult=backtrackMult,
                 armijoMult=armijoMult, stepSize=stepSize)
 
-        stepSize, Xbeta, gradient, lf, func, step = persist(stepSize, Xbeta, gradient, lf, func, step)
+        beta, Xstep, stepSize, Xbeta, gradient, lf, func, step = persist(
+          beta, Xstep, stepSize, Xbeta, gradient, lf, func, step)
+
         Xbeta = da.from_delayed(Xbeta, shape=old_Xbeta.shape, dtype=old_Xbeta.dtype)
 
         stepSize, lf, func = compute(stepSize, lf, func)
