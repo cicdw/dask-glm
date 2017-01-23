@@ -85,11 +85,14 @@ def loglike(Xbeta, y):
     eXbeta = np.exp(Xbeta)
     return np.sum(np.log1p(eXbeta)) - np.dot(y, Xbeta)
 
+
+@jit(nogil=True)
 def compute_stepsize(beta, step, Xbeta, Xstep, y, curr_val, stepSize=1.0,
         armijoMult=0.1, backtrackMult=0.1):
     obeta, oXbeta = beta, Xbeta
     steplen = (step**2).sum()
     lf = curr_val
+    func = 0
     for ii in range(100):
         beta = obeta - stepSize * step
         if ii and np.array_equal(beta, obeta):
@@ -104,6 +107,7 @@ def compute_stepsize(beta, step, Xbeta, Xstep, y, curr_val, stepSize=1.0,
         stepSize *= backtrackMult
 
     return stepSize, beta, Xbeta, func
+
 
 def gradient_descent(X, y, max_steps=100, tol=1e-14):
     '''Michael Grant's implementation of Gradient Descent.'''
