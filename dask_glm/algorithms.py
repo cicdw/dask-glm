@@ -15,6 +15,18 @@ from dask_glm.families import Logistic
 from dask_glm.regularizers import Regularizer
 
 
+def initialize(init, method=None, **kwargs):
+    p = init.ravel().shape[0]
+    if method is None:
+        return init.ravel()
+    elif method == 'ones':
+        return np.ones(p)
+    elif method == 'random':
+        return np.random.normal(0, 1, p)
+    else:
+        raise ValueError("Unrecognized method!")
+
+
 def compute_stepsize_dask(beta, step, Xbeta, Xstep, y, curr_val,
                           family=Logistic, stepSize=1.0,
                           armijoMult=0.1, backtrackMult=0.1):
@@ -65,7 +77,8 @@ def compute_stepsize_dask(beta, step, Xbeta, Xstep, y, curr_val,
 
 
 @normalize
-def gradient_descent(X, y, max_iter=100, tol=1e-14, family=Logistic, **kwargs):
+def gradient_descent(X, y, max_iter=100, tol=1e-14, family=Logistic,
+                     init=None, **kwargs):
     """
     Michael Grant's implementation of Gradient Descent.
 
@@ -95,7 +108,7 @@ def gradient_descent(X, y, max_iter=100, tol=1e-14, family=Logistic, **kwargs):
     stepSize = 1.0
     recalcRate = 10
     backtrackMult = firstBacktrackMult
-    beta = np.zeros(p)
+    beta = initialize(np.zeros(p), method=init)
 
     for k in range(max_iter):
         # how necessary is this recalculation?
@@ -138,7 +151,7 @@ def gradient_descent(X, y, max_iter=100, tol=1e-14, family=Logistic, **kwargs):
 
 
 @normalize
-def newton(X, y, max_iter=50, tol=1e-8, family=Logistic, **kwargs):
+def newton(X, y, max_iter=50, tol=1e-8, family=Logistic, init=None, **kwargs):
     """Newtons Method for Logistic Regression.
 
     Parameters
@@ -159,7 +172,7 @@ def newton(X, y, max_iter=50, tol=1e-8, family=Logistic, **kwargs):
     """
     gradient, hessian = family.gradient, family.hessian
     n, p = X.shape
-    beta = np.zeros(p)  # always init to zeros?
+    beta = initialize(np.zeros(p), method=init)
     Xbeta = dot(X, beta)
 
     iter_count = 0
@@ -194,7 +207,8 @@ def newton(X, y, max_iter=50, tol=1e-8, family=Logistic, **kwargs):
 
 @normalize
 def admm(X, y, regularizer='l1', lamduh=0.1, rho=1, over_relax=1,
-         max_iter=250, abstol=1e-4, reltol=1e-2, family=Logistic, **kwargs):
+         max_iter=250, abstol=1e-4, reltol=1e-2, family=Logistic,
+         init=None, **kwargs):
     """
     Alternating Direction Method of Multipliers
 
@@ -253,7 +267,7 @@ def admm(X, y, regularizer='l1', lamduh=0.1, rho=1, over_relax=1,
 
     z = np.zeros(p)
     u = np.array([np.zeros(p) for i in range(nchunks)])
-    betas = np.array([np.ones(p) for i in range(nchunks)])
+    betas = np.array([initialize(np.ones(p), method=init) for i in range(nchunks)])
 
     for k in range(max_iter):
 
@@ -303,7 +317,7 @@ def local_update(X, y, beta, z, u, rho, f, fprime, solver=fmin_l_bfgs_b):
 
 @normalize
 def lbfgs(X, y, regularizer=None, lamduh=1.0, max_iter=100, tol=1e-4,
-          family=Logistic, verbose=False, **kwargs):
+          family=Logistic, verbose=False, init=None, **kwargs):
     """L-BFGS solver using scipy.optimize implementation
 
     Parameters
@@ -331,7 +345,7 @@ def lbfgs(X, y, regularizer=None, lamduh=1.0, max_iter=100, tol=1e-4,
         pointwise_gradient = regularizer.add_reg_grad(pointwise_gradient, lamduh)
 
     n, p = X.shape
-    beta0 = np.zeros(p)
+    beta0 = initialize(np.zeros(p), method=init)
 
     def compute_loss_grad(beta, X, y):
         loss_fn = pointwise_loss(beta, X, y)
@@ -350,7 +364,7 @@ def lbfgs(X, y, regularizer=None, lamduh=1.0, max_iter=100, tol=1e-4,
 
 @normalize
 def proximal_grad(X, y, regularizer='l1', lamduh=0.1, family=Logistic,
-                  max_iter=100, tol=1e-8, **kwargs):
+                  max_iter=100, tol=1e-8, init=None, **kwargs):
     """
 
     Parameters
@@ -375,12 +389,11 @@ def proximal_grad(X, y, regularizer='l1', lamduh=0.1, family=Logistic,
     n, p = X.shape
     firstBacktrackMult = 0.1
     nextBacktrackMult = 0.5
-    armijoMult = 0.1
     stepGrowth = 1.25
     stepSize = 1.0
     recalcRate = 10
     backtrackMult = firstBacktrackMult
-    beta = np.zeros(p)
+    beta = initialize(np.zeros(p), method=init)
     regularizer = Regularizer.get(regularizer)
 
     for k in range(max_iter):
@@ -400,7 +413,6 @@ def proximal_grad(X, y, regularizer='l1', lamduh=0.1, family=Logistic,
         lf = func
         for ii in range(100):
             beta = regularizer.proximal_operator(obeta - stepSize * gradient, stepSize * lamduh)
-            step = obeta - beta
             Xbeta = X.dot(beta)
 
             Xbeta, beta = persist(Xbeta, beta)
